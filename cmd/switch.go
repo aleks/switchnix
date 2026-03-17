@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/aleks/switchnix/internal/config"
 	"github.com/aleks/switchnix/internal/ssh"
@@ -10,9 +11,10 @@ import (
 )
 
 var (
-	switchAction string
-	switchNoPush bool
-	switchDryRun bool
+	switchAction   string
+	switchNoPush   bool
+	switchDryRun   bool
+	switchNixosArgs []string
 )
 
 var switchCmd = &cobra.Command{
@@ -30,6 +32,7 @@ func init() {
 	switchCmd.Flags().StringVar(&switchAction, "action", "switch", "nixos-rebuild action: switch, test, or boot")
 	switchCmd.Flags().BoolVar(&switchNoPush, "no-push", false, "skip pushing; rebuild from current remote configuration")
 	switchCmd.Flags().BoolVar(&switchDryRun, "dry-run", false, "show diff without pushing or switching")
+	switchCmd.Flags().StringSliceVar(&switchNixosArgs, "nixos-args", nil, "additional flags to pass to nixos-rebuild (e.g. --nixos-args='--flake,/etc/nixos#host')")
 	rootCmd.AddCommand(switchCmd)
 }
 
@@ -58,9 +61,14 @@ func runSwitch(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	extraArgs := ""
+	if len(switchNixosArgs) > 0 {
+		extraArgs = " " + strings.Join(switchNixosArgs, " ")
+	}
+
 	if switchNoPush {
 		// --no-push: just run rebuild against /etc/nixos/ (original behavior)
-		rebuildCmd := fmt.Sprintf("sudo nixos-rebuild %s", switchAction)
+		rebuildCmd := fmt.Sprintf("sudo nixos-rebuild %s%s", switchAction, extraArgs)
 		fmt.Println(ui.Info.Render(fmt.Sprintf("Running '%s' on %s (%s)...", rebuildCmd, host.Name, host.Hostname)))
 		fmt.Println()
 
@@ -88,7 +96,7 @@ func runSwitch(cmd *cobra.Command, args []string) error {
 	}()
 
 	// Build from staging
-	rebuildCmd := fmt.Sprintf("sudo nixos-rebuild %s -I nixos-config=%s/configuration.nix", switchAction, stagingDir)
+	rebuildCmd := fmt.Sprintf("sudo nixos-rebuild %s -I nixos-config=%s/configuration.nix%s", switchAction, stagingDir, extraArgs)
 	fmt.Println()
 	fmt.Println(ui.Info.Render(fmt.Sprintf("Running '%s' on %s (%s)...", rebuildCmd, host.Name, host.Hostname)))
 	fmt.Println()

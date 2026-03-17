@@ -9,6 +9,7 @@ switchnix switch <host>
 switchnix switch <host> --action test
 switchnix switch <host> --no-push
 switchnix switch <host> --dry-run
+switchnix switch <host> --nixos-args='--flake,/etc/nixos#myhost'
 ```
 
 Where `<host>` is the name of a host defined in `hosts.yml`.
@@ -33,6 +34,7 @@ This means a broken configuration will never overwrite your working `/etc/nixos/
 | `--action` | `switch` | The nixos-rebuild action to run |
 | `--no-push` | `false` | Skip pushing; rebuild from the current remote `/etc/nixos/` |
 | `--dry-run` | `false` | Show diff without pushing or switching |
+| `--nixos-args` | `[]` | Additional flags to pass to `nixos-rebuild` |
 | `--config, -c` | `hosts.yml` | Path to hosts configuration file |
 
 ### Available actions
@@ -87,6 +89,12 @@ switchnix switch webserver --no-push
 
 # Set as boot default without activating now
 switchnix switch webserver --action boot
+
+# Use a flake-based configuration
+switchnix switch webserver --nixos-args='--flake,/etc/nixos#webserver'
+
+# Pass multiple extra flags
+switchnix switch webserver --nixos-args=--flake --nixos-args=/etc/nixos#webserver
 ```
 
 ## Prerequisites
