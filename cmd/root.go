@@ -17,10 +17,11 @@ var (
 var cmdCtx context.Context
 
 var rootCmd = &cobra.Command{
-	Use:     "switchnix",
-	Short:   "Manage NixOS configurations on remote servers",
-	Long:    "A CLI tool to pull, push, and apply NixOS configurations on remote servers via SSH.",
-	Version: Version,
+	Use:          "switchnix",
+	Short:        "Manage NixOS configurations on remote servers",
+	Long:         "A CLI tool to pull, push, and apply NixOS configurations on remote servers via SSH.",
+	Version:      Version,
+	SilenceUsage: true,
 }
 
 func init() {
