@@ -57,7 +57,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to read local files: %w", err)
 	}
 
-	// Read remote files
+	// Read remote files (uses interactive sudo for staging)
 	fmt.Printf("Fetching remote configuration from %s (%s)...\n", host.Name, host.Hostname)
 
 	ctx, cancel := withTimeout(cmdCtx, 5*time.Minute)
@@ -95,14 +95,23 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Push via rsync
+	// Push via rsync to staging dir, then apply with sudo
 	pushCtx, pushCancel := withTimeout(cmdCtx, 10*time.Minute)
 	defer pushCancel()
 
+	remotePath, apply, err := ssh.StagePush(pushCtx, host)
+	if err != nil {
+		return fmt.Errorf("failed to prepare remote staging: %w", err)
+	}
+
 	localPath := localDir + string(os.PathSeparator)
-	rsyncArgs := ssh.RsyncPushArgs(host, localPath, "/etc/nixos/")
+	rsyncArgs := ssh.RsyncPushArgs(host, localPath, remotePath)
 	if err := ssh.Rsync(pushCtx, rsyncArgs); err != nil {
 		return fmt.Errorf("rsync push failed: %w", err)
+	}
+
+	if err := apply(); err != nil {
+		return fmt.Errorf("failed to apply configuration: %w", err)
 	}
 
 	fmt.Printf("Configuration pushed to %s successfully.\n", host.Name)
@@ -155,8 +164,18 @@ func isPathSafe(path string) bool {
 }
 
 func readRemoteFiles(ctx context.Context, host *config.Host) (map[string]string, error) {
-	// List remote files
-	output, err := ssh.RunSSH(ctx, host, "sudo find /etc/nixos -type f -printf '%P\\n'")
+	// Stage remote files to a user-readable temp dir (prompts for sudo).
+	remotePath, cleanup, err := ssh.StagePull(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+
+	// remotePath ends with "/", strip it for find command
+	stageDir := strings.TrimSuffix(remotePath, "/")
+
+	// List files (no sudo needed — staged files are user-owned).
+	output, err := ssh.RunSSH(ctx, host, fmt.Sprintf("find %s -type f -printf '%%P\\n'", stageDir))
 	if err != nil {
 		return nil, fmt.Errorf("failed to list remote files: %s", strings.TrimSpace(string(output)))
 	}
@@ -171,7 +190,7 @@ func readRemoteFiles(ctx context.Context, host *config.Host) (map[string]string,
 		if !isPathSafe(line) {
 			return nil, fmt.Errorf("remote file path %q contains unsafe characters", line)
 		}
-		content, err := ssh.RunSSH(ctx, host, fmt.Sprintf("sudo cat -- /etc/nixos/%s", line))
+		content, err := ssh.RunSSH(ctx, host, fmt.Sprintf("cat -- %s/%s", stageDir, line))
 		if err != nil {
 			return nil, fmt.Errorf("failed to read remote file %s: %s", line, strings.TrimSpace(string(content)))
 		}

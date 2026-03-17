@@ -1,6 +1,7 @@
 package ssh
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/aleks/switchnix/internal/config"
@@ -67,10 +68,10 @@ func TestRsyncArgs_Pull(t *testing.T) {
 		Port:     22,
 	}
 
-	args := RsyncPullArgs(h, "/etc/nixos/", "/local/path/")
+	args := RsyncPullArgs(h, "/tmp/switchnix-stage/", "/local/path/")
 	assertContains(t, args, "-avz")
-	assertContains(t, args, "--rsync-path=sudo rsync")
-	assertContains(t, args, "root@10.0.0.1:/etc/nixos/")
+	assertNotContains(t, args, "--rsync-path=sudo rsync")
+	assertContains(t, args, "root@10.0.0.1:/tmp/switchnix-stage/")
 	assertContains(t, args, "/local/path/")
 
 	// Should contain ssh command with BatchMode and port
@@ -87,6 +88,32 @@ func TestRsyncArgs_Pull(t *testing.T) {
 	}
 }
 
+func TestRsyncArgs_PullWithSSHOptions(t *testing.T) {
+	h := &config.Host{
+		Name:       "web",
+		Hostname:   "10.0.0.1",
+		Username:   "root",
+		Port:       22,
+		SSHOptions: []string{"-o", "ConnectTimeout=5"},
+	}
+
+	args := RsyncPullArgs(h, "/tmp/switchnix-stage/", "/local/path/")
+	found := false
+	for i, a := range args {
+		if a == "-e" && i+1 < len(args) {
+			v := args[i+1]
+			if strings.Contains(v, "BatchMode=yes") &&
+				strings.Contains(v, "ConnectTimeout=5") &&
+				strings.Contains(v, "-p 22") {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected rsync args to contain ssh command with SSHOptions, got %v", args)
+	}
+}
+
 func TestRsyncArgs_Push(t *testing.T) {
 	h := &config.Host{
 		Name:     "web",
@@ -95,12 +122,12 @@ func TestRsyncArgs_Push(t *testing.T) {
 		Port:     22,
 	}
 
-	args := RsyncPushArgs(h, "/local/path/", "/etc/nixos/")
+	args := RsyncPushArgs(h, "/local/path/", "/tmp/switchnix-stage/")
 	assertContains(t, args, "-avz")
 	assertContains(t, args, "--delete")
-	assertContains(t, args, "--rsync-path=sudo rsync")
+	assertNotContains(t, args, "--rsync-path=sudo rsync")
 	assertContains(t, args, "/local/path/")
-	assertContains(t, args, "root@10.0.0.1:/etc/nixos/")
+	assertContains(t, args, "root@10.0.0.1:/tmp/switchnix-stage/")
 }
 
 func assertSliceEqual(t *testing.T, expected, actual []string) {
@@ -123,4 +150,14 @@ func assertContains(t *testing.T, slice []string, value string) {
 		}
 	}
 	t.Errorf("expected slice to contain %q, got %v", value, slice)
+}
+
+func assertNotContains(t *testing.T, slice []string, value string) {
+	t.Helper()
+	for _, s := range slice {
+		if s == value {
+			t.Errorf("expected slice NOT to contain %q, got %v", value, slice)
+			return
+		}
+	}
 }

@@ -49,7 +49,15 @@ func runPull(cmd *cobra.Command, args []string) error {
 	ctx, cancel := withTimeout(cmdCtx, 10*time.Minute)
 	defer cancel()
 
-	rsyncArgs := ssh.RsyncPullArgs(host, "/etc/nixos/", localPath)
+	// Stage remote files to a user-readable temp dir (prompts for sudo).
+	remotePath, cleanup, err := ssh.StagePull(ctx, host)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	// Rsync from the staged dir (no sudo needed).
+	rsyncArgs := ssh.RsyncPullArgs(host, remotePath, localPath)
 	if err := ssh.Rsync(ctx, rsyncArgs); err != nil {
 		return fmt.Errorf("rsync failed: %w", err)
 	}

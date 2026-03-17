@@ -54,14 +54,66 @@ func RunSSHInteractive(ctx context.Context, h *config.Host, command string) erro
 }
 
 func sshCommandString(h *config.Host) string {
-	return fmt.Sprintf("ssh -o BatchMode=yes -p %d", h.Port)
+	cmd := fmt.Sprintf("ssh -o BatchMode=yes -p %d", h.Port)
+	for _, opt := range h.SSHOptions {
+		cmd += " " + opt
+	}
+	return cmd
+}
+
+// StagePull copies /etc/nixos/ to a user-readable temp dir on the remote host
+// via interactive SSH (supporting sudo password prompts). It returns the remote
+// staging path and a cleanup function.
+func StagePull(ctx context.Context, h *config.Host) (remotePath string, cleanup func(), err error) {
+	const stageDir = "/tmp/switchnix-stage"
+
+	// Use interactive SSH so sudo can prompt for a password via the TTY.
+	stageCmd := fmt.Sprintf(
+		"sudo rm -rf %s && sudo cp -a /etc/nixos/ %s && sudo chown -R %s: %s",
+		stageDir, stageDir, h.Username, stageDir,
+	)
+	if err := RunSSHInteractive(ctx, h, stageCmd); err != nil {
+		return "", nil, fmt.Errorf("failed to stage remote files: %w", err)
+	}
+
+	cleanup = func() {
+		// Best-effort cleanup over non-interactive SSH (no sudo needed).
+		_, _ = RunSSH(ctx, h, fmt.Sprintf("rm -rf %s", stageDir))
+	}
+
+	return stageDir + "/", cleanup, nil
+}
+
+// StagePush copies files from a user-writable temp dir into /etc/nixos/ on the
+// remote host via interactive SSH (supporting sudo password prompts). It returns
+// the remote staging path for the caller to rsync into, and a function that
+// performs the final sudo copy + cleanup.
+func StagePush(ctx context.Context, h *config.Host) (remotePath string, apply func() error, err error) {
+	const stageDir = "/tmp/switchnix-stage"
+
+	// Create the staging directory (no sudo needed).
+	output, err := RunSSH(ctx, h, fmt.Sprintf("rm -rf %s && mkdir -p %s", stageDir, stageDir))
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create staging directory: %s", string(output))
+	}
+
+	apply = func() error {
+		// Use interactive SSH so sudo can prompt for a password.
+		applyCmd := fmt.Sprintf(
+			"sudo rsync -a --delete %s/ /etc/nixos/ && rm -rf %s",
+			stageDir, stageDir,
+		)
+		return RunSSHInteractive(ctx, h, applyCmd)
+	}
+
+	return stageDir + "/", apply, nil
 }
 
 // RsyncPullArgs returns rsync arguments for pulling from remote to local.
+// No sudo needed — the caller should stage files to a user-readable path first.
 func RsyncPullArgs(h *config.Host, remotePath, localPath string) []string {
 	return []string{
 		"-avz",
-		"--rsync-path=sudo rsync",
 		"-e", sshCommandString(h),
 		fmt.Sprintf("%s@%s:%s", h.Username, h.Hostname, remotePath),
 		localPath,
@@ -69,11 +121,11 @@ func RsyncPullArgs(h *config.Host, remotePath, localPath string) []string {
 }
 
 // RsyncPushArgs returns rsync arguments for pushing from local to remote.
+// No sudo needed — the caller should push to a staging path, then apply.
 func RsyncPushArgs(h *config.Host, localPath, remotePath string) []string {
 	return []string{
 		"-avz",
 		"--delete",
-		"--rsync-path=sudo rsync",
 		"-e", sshCommandString(h),
 		localPath,
 		fmt.Sprintf("%s@%s:%s", h.Username, h.Hostname, remotePath),
