@@ -3,7 +3,14 @@ package diff
 import (
 	"strings"
 	"testing"
+
+	"github.com/fatih/color"
 )
+
+func init() {
+	// Disable colors in tests for predictable output
+	color.NoColor = true
+}
 
 func TestComputeFileDiff_IdenticalContent(t *testing.T) {
 	content := "line1\nline2\nline3\n"
@@ -51,6 +58,50 @@ func TestComputeFileDiff_DeletedFile(t *testing.T) {
 	}
 	if !strings.Contains(result, "-old content") {
 		t.Error("expected diff to show removed content")
+	}
+}
+
+func TestComputeFileDiff_NoTrailingNewline(t *testing.T) {
+	old := "line1\nline2"
+	new := "line1\nline2\nline3"
+	result := ComputeFileDiff("test.nix", old, new)
+	if result == "" {
+		t.Error("expected non-empty diff")
+	}
+	if !strings.Contains(result, "+line3") {
+		t.Error("expected diff to show added line")
+	}
+}
+
+func TestFormatDiff_EmptyInput(t *testing.T) {
+	result := FormatDiff("")
+	if result != "" {
+		t.Errorf("expected empty string for empty input, got %q", result)
+	}
+}
+
+func TestFormatDiff_PreservesAllLines(t *testing.T) {
+	input := "--- a/test.nix\n+++ b/test.nix\n@@ -1,3 +1,3 @@\n line1\n-line2\n+modified\n line3\n"
+	result := FormatDiff(input)
+
+	// With colors disabled, output should contain all the original content
+	if !strings.Contains(result, "--- a/test.nix") {
+		t.Error("expected formatted diff to contain old file header")
+	}
+	if !strings.Contains(result, "+++ b/test.nix") {
+		t.Error("expected formatted diff to contain new file header")
+	}
+	if !strings.Contains(result, "@@ -1,3 +1,3 @@") {
+		t.Error("expected formatted diff to contain hunk header")
+	}
+	if !strings.Contains(result, "-line2") {
+		t.Error("expected formatted diff to contain removed line")
+	}
+	if !strings.Contains(result, "+modified") {
+		t.Error("expected formatted diff to contain added line")
+	}
+	if !strings.Contains(result, " line1") {
+		t.Error("expected formatted diff to contain context line")
 	}
 }
 
@@ -137,5 +188,29 @@ func TestComputeChangeSet_MixedChanges(t *testing.T) {
 	}
 	if len(cs.Modified) != 1 {
 		t.Errorf("expected 1 modified, got %d", len(cs.Modified))
+	}
+}
+
+func TestComputeChangeSet_EmptyMaps(t *testing.T) {
+	cs := ComputeChangeSet(map[string]string{}, map[string]string{})
+	if cs.HasChanges() {
+		t.Error("expected no changes for empty maps")
+	}
+}
+
+func TestComputeChangeSet_SortedOutput(t *testing.T) {
+	local := map[string]string{
+		"c.nix": "c",
+		"a.nix": "a",
+		"b.nix": "b",
+	}
+	remote := map[string]string{}
+
+	cs := ComputeChangeSet(local, remote)
+	if len(cs.Added) != 3 {
+		t.Fatalf("expected 3 added, got %d", len(cs.Added))
+	}
+	if cs.Added[0] != "a.nix" || cs.Added[1] != "b.nix" || cs.Added[2] != "c.nix" {
+		t.Errorf("expected sorted output, got %v", cs.Added)
 	}
 }
