@@ -90,7 +90,7 @@ Compares local files against the remote `/etc/nixos/`, displays a colored unifie
 
 ### `switchnix switch <host> [--action switch|test|boot] [--no-push] [--dry-run] [--nixos-args=...]`
 
-Atomically pushes local configuration and runs `nixos-rebuild` on the remote host. Files are staged in a temporary directory and `nixos-rebuild` runs against the staged config. Only if the rebuild succeeds are files committed to `/etc/nixos/`. If the rebuild fails, `/etc/nixos/` is left untouched.
+Atomically pushes local configuration and runs `nixos-rebuild` on the remote host. Files are staged in a temporary directory and `nixos-rebuild` runs against the staged config. Only if the rebuild succeeds are files committed to `/etc/nixos/`. If the rebuild fails, `/etc/nixos/` is left untouched. If the local configuration already matches the remote, the push is skipped but `nixos-rebuild` still runs against the current remote configuration.
 
 Use `--no-push` to skip pushing and rebuild from the existing remote `/etc/nixos/`. Use `--dry-run` to preview the diff without pushing or switching. Use `--nixos-args` to pass additional flags to `nixos-rebuild` (e.g. `--nixos-args='--flake,/etc/nixos#myhost'`).
 

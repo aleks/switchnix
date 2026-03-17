@@ -86,28 +86,38 @@ func runSwitch(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	if apply == nil {
-		return nil // no changes or dry run
+	if apply == nil && switchDryRun {
+		return nil
 	}
 
-	// Ensure staging is cleaned up on failure
-	defer func() {
-		_, _ = ssh.RunSSH(cmdCtx, host, fmt.Sprintf("rm -rf %s", stagingDir))
-	}()
+	if apply != nil {
+		// We have changes — rebuild from staging, commit on success
+		defer func() {
+			_, _ = ssh.RunSSH(cmdCtx, host, fmt.Sprintf("rm -rf %s", stagingDir))
+		}()
 
-	// Build from staging
-	rebuildCmd := fmt.Sprintf("sudo nixos-rebuild %s -I nixos-config=%s/configuration.nix%s", switchAction, stagingDir, extraArgs)
-	fmt.Println()
-	fmt.Println(ui.Info.Render(fmt.Sprintf("Running '%s' on %s (%s)...", rebuildCmd, host.Name, host.Hostname)))
-	fmt.Println()
+		rebuildCmd := fmt.Sprintf("sudo nixos-rebuild %s -I nixos-config=%s/configuration.nix%s", switchAction, stagingDir, extraArgs)
+		fmt.Println()
+		fmt.Println(ui.Info.Render(fmt.Sprintf("Running '%s' on %s (%s)...", rebuildCmd, host.Name, host.Hostname)))
+		fmt.Println()
 
-	if err := ssh.RunSSHInteractive(cmdCtx, host, rebuildCmd); err != nil {
-		return fmt.Errorf("nixos-rebuild %s failed (remote config unchanged): %w", switchAction, err)
-	}
+		if err := ssh.RunSSHInteractive(cmdCtx, host, rebuildCmd); err != nil {
+			return fmt.Errorf("nixos-rebuild %s failed (remote config unchanged): %w", switchAction, err)
+		}
 
-	// Success — commit staging to /etc/nixos/
-	if err := apply(); err != nil {
-		return fmt.Errorf("rebuild succeeded but failed to commit config: %w", err)
+		if err := apply(); err != nil {
+			return fmt.Errorf("rebuild succeeded but failed to commit config: %w", err)
+		}
+	} else {
+		// No changes to push — rebuild from current remote configuration
+		rebuildCmd := fmt.Sprintf("sudo nixos-rebuild %s%s", switchAction, extraArgs)
+		fmt.Println()
+		fmt.Println(ui.Info.Render(fmt.Sprintf("Running '%s' on %s (%s)...", rebuildCmd, host.Name, host.Hostname)))
+		fmt.Println()
+
+		if err := ssh.RunSSHInteractive(cmdCtx, host, rebuildCmd); err != nil {
+			return fmt.Errorf("nixos-rebuild %s failed: %w", switchAction, err)
+		}
 	}
 
 	fmt.Println()
