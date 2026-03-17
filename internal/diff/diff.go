@@ -95,14 +95,15 @@ func FormatDiff(diffText string) string {
 }
 
 // PrintChangeSet prints a formatted summary and diffs for a ChangeSet.
-func PrintChangeSet(cs ChangeSet, local, remote map[string]string) {
+// The target parameter describes where changes will be applied (e.g. "remote", "locally").
+func PrintChangeSet(cs ChangeSet, local, remote map[string]string, target string) {
 	if !cs.HasChanges() {
 		fmt.Println("No changes detected.")
 		return
 	}
 
 	if len(cs.Added) > 0 {
-		fmt.Println(ui.Green.Render("Files to be added to remote:"))
+		fmt.Println(ui.Green.Render(fmt.Sprintf("Files to be added %s:", target)))
 		for _, f := range cs.Added {
 			fmt.Printf("  + %s\n", f)
 		}
@@ -110,7 +111,7 @@ func PrintChangeSet(cs ChangeSet, local, remote map[string]string) {
 	}
 
 	if len(cs.Removed) > 0 {
-		fmt.Println(ui.Red.Render("Files to be removed from remote:"))
+		fmt.Println(ui.Red.Render(fmt.Sprintf("Files to be removed %s:", target)))
 		for _, f := range cs.Removed {
 			fmt.Printf("  - %s\n", f)
 		}
@@ -118,7 +119,7 @@ func PrintChangeSet(cs ChangeSet, local, remote map[string]string) {
 	}
 
 	if len(cs.Modified) > 0 {
-		fmt.Println(ui.Yellow.Render("Files to be modified on remote:"))
+		fmt.Println(ui.Yellow.Render(fmt.Sprintf("Files to be modified %s:", target)))
 		for _, f := range cs.Modified {
 			fmt.Printf("  ~ %s\n", f)
 		}

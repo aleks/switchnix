@@ -67,7 +67,7 @@ func pushToStaging(ctx context.Context, host *config.Host, isDryRun bool) (apply
 		return nil, nil
 	}
 
-	diff.PrintChangeSet(cs, localFiles, remoteFiles)
+	diff.PrintChangeSet(cs, localFiles, remoteFiles, "on remote")
 
 	if isDryRun {
 		fmt.Println(ui.Faint.Render("Dry run — no changes pushed."))
