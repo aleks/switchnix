@@ -1,10 +1,10 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/aleks/switchnix/internal/config"
 	"github.com/aleks/switchnix/internal/ssh"
@@ -46,7 +46,9 @@ func runPull(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Pulling configuration from %s (%s)...\n", host.Name, host.Hostname)
 
-	ctx := context.Background()
+	ctx, cancel := withTimeout(cmdCtx, 10*time.Minute)
+	defer cancel()
+
 	rsyncArgs := ssh.RsyncPullArgs(host, "/etc/nixos/", localPath)
 	if err := ssh.Rsync(ctx, rsyncArgs); err != nil {
 		return fmt.Errorf("rsync failed: %w", err)

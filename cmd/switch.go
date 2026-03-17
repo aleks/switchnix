@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 
 	"github.com/aleks/switchnix/internal/config"
@@ -50,8 +49,9 @@ func runSwitch(cmd *cobra.Command, args []string) error {
 	rebuildCmd := fmt.Sprintf("sudo nixos-rebuild %s", switchAction)
 	fmt.Printf("Running '%s' on %s (%s)...\n\n", rebuildCmd, host.Name, host.Hostname)
 
-	ctx := context.Background()
-	if err := ssh.RunSSHInteractive(ctx, host, rebuildCmd); err != nil {
+	// No timeout for switch — nixos-rebuild can take a very long time.
+	// Signal handling (Ctrl+C) is still active via cmdCtx.
+	if err := ssh.RunSSHInteractive(cmdCtx, host, rebuildCmd); err != nil {
 		return fmt.Errorf("nixos-rebuild %s failed: %w", switchAction, err)
 	}
 

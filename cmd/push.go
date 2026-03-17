@@ -8,12 +8,15 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/aleks/switchnix/internal/config"
 	"github.com/aleks/switchnix/internal/diff"
 	"github.com/aleks/switchnix/internal/ssh"
 	"github.com/spf13/cobra"
 )
+
+const maxFileSize = 10 * 1024 * 1024 // 10 MB
 
 var dryRun bool
 
@@ -48,8 +51,6 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no local configuration found at %s. Run 'switchnix pull %s' first", localDir, host.Name)
 	}
 
-	ctx := context.Background()
-
 	// Read local files
 	localFiles, err := readLocalFiles(localDir)
 	if err != nil {
@@ -58,6 +59,10 @@ func runPush(cmd *cobra.Command, args []string) error {
 
 	// Read remote files
 	fmt.Printf("Fetching remote configuration from %s (%s)...\n", host.Name, host.Hostname)
+
+	ctx, cancel := withTimeout(cmdCtx, 5*time.Minute)
+	defer cancel()
+
 	remoteFiles, err := readRemoteFiles(ctx, host)
 	if err != nil {
 		return fmt.Errorf("failed to read remote files: %w", err)
@@ -91,9 +96,12 @@ func runPush(cmd *cobra.Command, args []string) error {
 	}
 
 	// Push via rsync
+	pushCtx, pushCancel := withTimeout(cmdCtx, 10*time.Minute)
+	defer pushCancel()
+
 	localPath := localDir + string(os.PathSeparator)
 	rsyncArgs := ssh.RsyncPushArgs(host, localPath, "/etc/nixos/")
-	if err := ssh.Rsync(ctx, rsyncArgs); err != nil {
+	if err := ssh.Rsync(pushCtx, rsyncArgs); err != nil {
 		return fmt.Errorf("rsync push failed: %w", err)
 	}
 
@@ -110,6 +118,12 @@ func readLocalFiles(dir string) (map[string]string, error) {
 		if info.IsDir() {
 			return nil
 		}
+		if !info.Mode().IsRegular() {
+			return nil // skip symlinks, devices, etc.
+		}
+		if info.Size() > maxFileSize {
+			return fmt.Errorf("file %s exceeds maximum size of %d bytes", path, maxFileSize)
+		}
 		relPath, err := filepath.Rel(dir, path)
 		if err != nil {
 			return err
@@ -125,7 +139,8 @@ func readLocalFiles(dir string) (map[string]string, error) {
 }
 
 // safePathRegexp allows only safe relative paths (no shell metacharacters).
-var safePathRegexp = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._/-]*$`)
+// Supports dotfiles (e.g., .gitignore) and paths starting with underscores.
+var safePathRegexp = regexp.MustCompile(`^[a-zA-Z0-9._][a-zA-Z0-9._/-]*$`)
 
 func isPathSafe(path string) bool {
 	if !safePathRegexp.MatchString(path) {
@@ -133,7 +148,7 @@ func isPathSafe(path string) bool {
 	}
 	// Reject path traversal
 	cleaned := filepath.Clean(path)
-	if strings.HasPrefix(cleaned, "..") || strings.Contains(cleaned, "/../") {
+	if cleaned == ".." || strings.HasPrefix(cleaned, "../") || strings.Contains(cleaned, "/../") {
 		return false
 	}
 	return true

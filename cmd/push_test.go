@@ -9,7 +9,6 @@ import (
 func TestReadLocalFiles(t *testing.T) {
 	dir := t.TempDir()
 
-	// Create test files
 	if err := os.WriteFile(filepath.Join(dir, "configuration.nix"), []byte("config content"), 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -67,6 +66,41 @@ func TestReadLocalFiles_EmptyDir(t *testing.T) {
 	}
 }
 
+func TestReadLocalFiles_SkipsNonRegularFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(dir, "config.nix"), []byte("content"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// Create a symlink — should be skipped
+	if err := os.Symlink(filepath.Join(dir, "config.nix"), filepath.Join(dir, "link.nix")); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := readLocalFiles(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(files) != 1 {
+		t.Errorf("expected 1 file (symlink skipped), got %d: %v", len(files), keys(files))
+	}
+}
+
+func TestReadLocalFiles_RejectsOversizedFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	// Create a file that exceeds maxFileSize
+	bigData := make([]byte, maxFileSize+1)
+	if err := os.WriteFile(filepath.Join(dir, "big.nix"), bigData, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := readLocalFiles(dir)
+	if err == nil {
+		t.Fatal("expected error for oversized file")
+	}
+}
+
 func TestIsPathSafe(t *testing.T) {
 	safe := []string{
 		"configuration.nix",
@@ -75,6 +109,9 @@ func TestIsPathSafe(t *testing.T) {
 		"flake.lock",
 		"modules/networking.nix",
 		"hosts/web/default.nix",
+		".gitignore",
+		".envrc",
+		"_config.nix",
 	}
 	for _, p := range safe {
 		if !isPathSafe(p) {
@@ -90,7 +127,6 @@ func TestIsPathSafe(t *testing.T) {
 		"`whoami`",
 		"file name with spaces.nix",
 		"/absolute/path",
-		".hidden",
 	}
 	for _, p := range unsafe {
 		if isPathSafe(p) {
