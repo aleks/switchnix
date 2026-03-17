@@ -1,0 +1,167 @@
+package cmd
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+
+	"github.com/aleks/switchnix/internal/config"
+	"github.com/aleks/switchnix/internal/diff"
+	"github.com/aleks/switchnix/internal/ssh"
+	"github.com/spf13/cobra"
+)
+
+var dryRun bool
+
+var pushCmd = &cobra.Command{
+	Use:   "push <host>",
+	Short: "Push local NixOS configuration to a remote host",
+	Long:  "Shows a diff of changes and, upon confirmation, pushes configurations/<host>/ to /etc/nixos/ on the remote.",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runPush,
+}
+
+func init() {
+	pushCmd.Flags().BoolVar(&dryRun, "dry-run", false, "show diff without pushing changes")
+	rootCmd.AddCommand(pushCmd)
+}
+
+func runPush(cmd *cobra.Command, args []string) error {
+	hostName := args[0]
+
+	cfg, err := config.LoadConfig(configPath)
+	if err != nil {
+		return err
+	}
+
+	host, err := cfg.FindHost(hostName)
+	if err != nil {
+		return err
+	}
+
+	localDir := filepath.Join("configurations", host.Name)
+	if _, err := os.Stat(localDir); os.IsNotExist(err) {
+		return fmt.Errorf("no local configuration found at %s. Run 'switchnix pull %s' first", localDir, host.Name)
+	}
+
+	ctx := context.Background()
+
+	// Read local files
+	localFiles, err := readLocalFiles(localDir)
+	if err != nil {
+		return fmt.Errorf("failed to read local files: %w", err)
+	}
+
+	// Read remote files
+	fmt.Printf("Fetching remote configuration from %s (%s)...\n", host.Name, host.Hostname)
+	remoteFiles, err := readRemoteFiles(ctx, host)
+	if err != nil {
+		return fmt.Errorf("failed to read remote files: %w", err)
+	}
+
+	// Compute and display changes
+	cs := diff.ComputeChangeSet(localFiles, remoteFiles)
+	if !cs.HasChanges() {
+		fmt.Println("No changes to push.")
+		return nil
+	}
+
+	diff.PrintChangeSet(cs, localFiles, remoteFiles)
+
+	if dryRun {
+		fmt.Println("Dry run — no changes pushed.")
+		return nil
+	}
+
+	// Confirm
+	fmt.Printf("Apply these changes to %s (%s)? [y/N]: ", host.Name, host.Hostname)
+	reader := bufio.NewReader(os.Stdin)
+	answer, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("failed to read input: %w", err)
+	}
+	answer = strings.TrimSpace(strings.ToLower(answer))
+	if answer != "y" && answer != "yes" {
+		fmt.Println("Push cancelled.")
+		return nil
+	}
+
+	// Push via rsync
+	localPath := localDir + string(os.PathSeparator)
+	rsyncArgs := ssh.RsyncPushArgs(host, localPath, "/etc/nixos/")
+	if err := ssh.Rsync(ctx, rsyncArgs); err != nil {
+		return fmt.Errorf("rsync push failed: %w", err)
+	}
+
+	fmt.Printf("Configuration pushed to %s successfully.\n", host.Name)
+	return nil
+}
+
+func readLocalFiles(dir string) (map[string]string, error) {
+	files := make(map[string]string)
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		relPath, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		files[relPath] = string(data)
+		return nil
+	})
+	return files, err
+}
+
+// safePathRegexp allows only safe relative paths (no shell metacharacters).
+var safePathRegexp = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._/-]*$`)
+
+func isPathSafe(path string) bool {
+	if !safePathRegexp.MatchString(path) {
+		return false
+	}
+	// Reject path traversal
+	cleaned := filepath.Clean(path)
+	if strings.HasPrefix(cleaned, "..") || strings.Contains(cleaned, "/../") {
+		return false
+	}
+	return true
+}
+
+func readRemoteFiles(ctx context.Context, host *config.Host) (map[string]string, error) {
+	// List remote files
+	output, err := ssh.RunSSH(ctx, host, "sudo find /etc/nixos -type f -printf '%P\\n'")
+	if err != nil {
+		return nil, fmt.Errorf("failed to list remote files: %s", strings.TrimSpace(string(output)))
+	}
+
+	files := make(map[string]string)
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if !isPathSafe(line) {
+			return nil, fmt.Errorf("remote file path %q contains unsafe characters", line)
+		}
+		content, err := ssh.RunSSH(ctx, host, fmt.Sprintf("sudo cat -- /etc/nixos/%s", line))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read remote file %s: %s", line, strings.TrimSpace(string(content)))
+		}
+		files[line] = string(content)
+	}
+
+	return files, nil
+}
