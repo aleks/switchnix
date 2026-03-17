@@ -45,6 +45,8 @@ The command runs `ssh -t` which allocates a real PTY on the remote host. This me
 
 Unlike the `pull` and `push` commands, the `switch` command does **not** use `BatchMode=yes` because it needs interactive terminal support for sudo.
 
+There is no timeout for the `switch` command since `nixos-rebuild` can take a long time (downloading packages, building derivations). Ctrl+C cleanly cancels the operation via signal handling.
+
 ## Typical workflow
 
 ```bash

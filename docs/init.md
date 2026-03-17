@@ -22,6 +22,7 @@ The generated `hosts.yml` contains commented examples showing the expected forma
 ## Safety
 
 - Refuses to run if `hosts.yml` or `configurations/` already exist, preventing accidental overwrites.
+- Uses atomic file creation (`O_EXCL`) to prevent race conditions if two `init` commands run simultaneously.
 
 ## hosts.yml format
 
@@ -41,10 +42,10 @@ hosts:
 | Field | Required | Default | Description |
 |---|---|---|---|
 | `name` | Yes | — | Unique identifier for the host. Used as CLI argument and directory name. Must be alphanumeric, hyphens, or underscores. |
-| `hostname` | Yes | — | IP address or hostname of the remote server. |
+| `hostname` | Yes | — | IP address (IPv4 or IPv6), or DNS hostname of the remote server. IPv6 addresses may be bare (`::1`) or bracketed (`[::1]`). |
 | `username` | Yes | — | SSH username for connecting to the host. |
 | `port` | No | `22` | SSH port. |
-| `ssh_options` | No | `[]` | Additional flags passed to the `ssh` command (e.g., `["-o", "ConnectTimeout=5"]`). |
+| `ssh_options` | No | `[]` | Additional flags passed to the `ssh` command (e.g., `["-o", "ConnectTimeout=5"]`). Validated against an allowlist to prevent injection. |
 
 ## Next steps
 

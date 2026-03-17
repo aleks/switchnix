@@ -30,6 +30,10 @@ The SSH connection uses `BatchMode=yes`, meaning it relies entirely on SSH key/a
 |---|---|---|
 | `--config, -c` | `hosts.yml` | Path to hosts configuration file |
 
+## Timeouts and signals
+
+The rsync operation has a 10-minute timeout. Ctrl+C cleanly cancels the operation.
+
 ## Prerequisites
 
 - `rsync` must be installed locally and on the remote host (available by default on NixOS)

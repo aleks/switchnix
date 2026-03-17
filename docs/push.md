@@ -36,6 +36,10 @@ Where `<host>` is the name of a host defined in `hosts.yml`.
 - **Dry run mode**: Use `--dry-run` to inspect changes without risk
 - **Path validation**: Remote file paths are validated against a strict allowlist to prevent command injection
 - **Key-based auth only**: SSH uses `BatchMode=yes` for file fetching (no password fallback)
+- **File size limit**: Local files larger than 10 MB are rejected to prevent accidental inclusion of large binaries
+- **Symlink safety**: Symbolic links and special files are skipped during local file reading
+- **Timeouts**: SSH operations time out after 5 minutes (fetching), rsync push after 10 minutes
+- **Signal handling**: Ctrl+C cleanly cancels the operation
 
 ## How it works
 
