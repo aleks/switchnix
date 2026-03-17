@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"regexp"
 	"strings"
@@ -25,6 +26,8 @@ var (
 	nameRegexp     = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
 	hostnameRegexp = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
 	usernameRegexp = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
+	// sshOptionRegexp allows only flags starting with - and safe values.
+	sshOptionRegexp = regexp.MustCompile(`^-[a-zA-Z0-9]$|^[a-zA-Z0-9][a-zA-Z0-9._=:/-]*$`)
 )
 
 func isValidName(s string) bool {
@@ -32,11 +35,21 @@ func isValidName(s string) bool {
 }
 
 func isValidHostname(s string) bool {
+	// Check for IPv6 address (with or without brackets)
+	stripped := strings.TrimPrefix(strings.TrimSuffix(s, "]"), "[")
+	if net.ParseIP(stripped) != nil {
+		return true
+	}
+	// Fall back to hostname regex for DNS names and IPv4
 	return hostnameRegexp.MatchString(s)
 }
 
 func isValidUsername(s string) bool {
 	return usernameRegexp.MatchString(s)
+}
+
+func isValidSSHOption(s string) bool {
+	return sshOptionRegexp.MatchString(s)
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -77,13 +90,18 @@ func validateHost(h *Host) error {
 		return fmt.Errorf("invalid name %q: must be alphanumeric, hyphens, or underscores", h.Name)
 	}
 	if !isValidHostname(h.Hostname) {
-		return fmt.Errorf("invalid hostname %q: must be a valid hostname or IP address", h.Hostname)
+		return fmt.Errorf("invalid hostname %q: must be a valid hostname, IPv4, or IPv6 address", h.Hostname)
 	}
 	if !isValidUsername(h.Username) {
 		return fmt.Errorf("invalid username %q: must be alphanumeric, hyphens, underscores, or dots", h.Username)
 	}
-	if h.Port < 0 || h.Port > 65535 {
+	if h.Port < 1 || h.Port > 65535 {
 		return fmt.Errorf("invalid port %d: must be between 1 and 65535", h.Port)
+	}
+	for _, opt := range h.SSHOptions {
+		if !isValidSSHOption(opt) {
+			return fmt.Errorf("invalid ssh_option %q: contains disallowed characters", opt)
+		}
 	}
 	return nil
 }

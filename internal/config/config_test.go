@@ -72,6 +72,28 @@ func TestLoadConfig_DefaultPort(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_SSHOptions(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hosts.yml")
+	content := []byte(`hosts:
+  - name: server
+    hostname: 10.0.0.1
+    username: root
+    ssh_options: ["-o", "ConnectTimeout=5"]
+`)
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(cfg.Hosts[0].SSHOptions) != 2 {
+		t.Errorf("expected 2 ssh options, got %d", len(cfg.Hosts[0].SSHOptions))
+	}
+}
+
 func TestLoadConfig_FileNotFound(t *testing.T) {
 	_, err := LoadConfig("/nonexistent/path/hosts.yml")
 	if err == nil {
@@ -148,6 +170,38 @@ func TestLoadConfig_ValidationErrors(t *testing.T) {
     hostname: 10.0.0.2
     username: root`,
 		},
+		{
+			name: "port too high",
+			content: `hosts:
+  - name: server
+    hostname: 10.0.0.1
+    username: root
+    port: 70000`,
+		},
+		{
+			name: "negative port",
+			content: `hosts:
+  - name: server
+    hostname: 10.0.0.1
+    username: root
+    port: -1`,
+		},
+		{
+			name: "unsafe ssh option",
+			content: `hosts:
+  - name: server
+    hostname: 10.0.0.1
+    username: root
+    ssh_options: ["$(whoami)"]`,
+		},
+		{
+			name: "ssh option with semicolon",
+			content: `hosts:
+  - name: server
+    hostname: 10.0.0.1
+    username: root
+    ssh_options: ["; rm -rf /"]`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -195,6 +249,21 @@ func TestFindHost(t *testing.T) {
 	}
 }
 
+func TestFindHost_CaseInsensitive(t *testing.T) {
+	cfg := &Config{
+		Hosts: []Host{
+			{Name: "WebServer", Hostname: "10.0.0.1", Username: "root", Port: 22},
+		},
+	}
+	h, err := cfg.FindHost("webserver")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if h.Name != "WebServer" {
+		t.Errorf("expected name 'WebServer', got %q", h.Name)
+	}
+}
+
 func TestValidName(t *testing.T) {
 	valid := []string{"server", "web-01", "my_host", "Server123"}
 	for _, name := range valid {
@@ -212,7 +281,18 @@ func TestValidName(t *testing.T) {
 }
 
 func TestValidHostname(t *testing.T) {
-	valid := []string{"192.168.1.1", "example.com", "my-server.local", "10.0.0.1", "server01"}
+	valid := []string{
+		"192.168.1.1",
+		"example.com",
+		"my-server.local",
+		"10.0.0.1",
+		"server01",
+		"::1",              // IPv6 loopback
+		"fe80::1",          // IPv6 link-local
+		"[::1]",            // bracketed IPv6
+		"[fe80::1]",        // bracketed IPv6
+		"2001:db8::1",      // full IPv6
+	}
 	for _, h := range valid {
 		if !isValidHostname(h) {
 			t.Errorf("expected %q to be valid hostname", h)
@@ -223,6 +303,22 @@ func TestValidHostname(t *testing.T) {
 	for _, h := range invalid {
 		if isValidHostname(h) {
 			t.Errorf("expected %q to be invalid hostname", h)
+		}
+	}
+}
+
+func TestValidSSHOption(t *testing.T) {
+	valid := []string{"-o", "ConnectTimeout=5", "-p", "StrictHostKeyChecking=yes", "-4", "-6"}
+	for _, opt := range valid {
+		if !isValidSSHOption(opt) {
+			t.Errorf("expected %q to be valid ssh option", opt)
+		}
+	}
+
+	invalid := []string{"$(whoami)", "; rm -rf /", "foo bar", "", "--opt`cmd`"}
+	for _, opt := range invalid {
+		if isValidSSHOption(opt) {
+			t.Errorf("expected %q to be invalid ssh option", opt)
 		}
 	}
 }
