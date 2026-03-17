@@ -20,22 +20,32 @@ hosts: []
 `
 
 // Init creates the switchnix project structure in the given directory.
+// Uses O_CREATE|O_EXCL to atomically check-and-create, avoiding TOCTOU races.
 func Init(dir string) error {
 	hostsPath := filepath.Join(dir, "hosts.yml")
 	configsPath := filepath.Join(dir, "configurations")
 
-	if _, err := os.Stat(hostsPath); err == nil {
-		return fmt.Errorf("hosts.yml already exists in %s", dir)
-	}
-	if _, err := os.Stat(configsPath); err == nil {
-		return fmt.Errorf("configurations/ already exists in %s", dir)
-	}
-
-	if err := os.WriteFile(hostsPath, []byte(hostsTemplate), 0644); err != nil {
+	// Atomically create hosts.yml — fails if it already exists
+	f, err := os.OpenFile(hostsPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0644)
+	if err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("hosts.yml already exists in %s", dir)
+		}
 		return fmt.Errorf("failed to create hosts.yml: %w", err)
 	}
+	if _, err := f.WriteString(hostsTemplate); err != nil {
+		f.Close()
+		return fmt.Errorf("failed to write hosts.yml: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close hosts.yml: %w", err)
+	}
 
-	if err := os.MkdirAll(configsPath, 0755); err != nil {
+	// Mkdir also fails atomically if the directory already exists
+	if err := os.Mkdir(configsPath, 0755); err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("configurations/ already exists in %s", dir)
+		}
 		return fmt.Errorf("failed to create configurations/: %w", err)
 	}
 
