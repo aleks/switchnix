@@ -4,12 +4,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/fatih/color"
+	"github.com/aleks/switchnix/internal/ui"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func init() {
-	// Disable colors in tests for predictable output
-	color.NoColor = true
+	// Disable styles in tests for predictable output
+	ui.Green = lipgloss.NewStyle()
+	ui.Red = lipgloss.NewStyle()
+	ui.Yellow = lipgloss.NewStyle()
+	ui.Cyan = lipgloss.NewStyle()
+	ui.Bold = lipgloss.NewStyle()
+	ui.Faint = lipgloss.NewStyle()
+	ui.Success = lipgloss.NewStyle()
+	ui.Info = lipgloss.NewStyle()
+	ui.Warn = lipgloss.NewStyle()
 }
 
 func TestComputeFileDiff_IdenticalContent(t *testing.T) {
@@ -84,7 +93,7 @@ func TestFormatDiff_PreservesAllLines(t *testing.T) {
 	input := "--- a/test.nix\n+++ b/test.nix\n@@ -1,3 +1,3 @@\n line1\n-line2\n+modified\n line3\n"
 	result := FormatDiff(input)
 
-	// With colors disabled, output should contain all the original content
+	// With styles disabled, output should contain all the original content
 	if !strings.Contains(result, "--- a/test.nix") {
 		t.Error("expected formatted diff to contain old file header")
 	}

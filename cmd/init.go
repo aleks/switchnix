@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/aleks/switchnix/internal/scaffold"
+	"github.com/aleks/switchnix/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -22,11 +23,11 @@ var initCmd = &cobra.Command{
 			return err
 		}
 
-		fmt.Println("Initialized switchnix project:")
-		fmt.Println("  hosts.yml        - define your remote NixOS hosts here")
-		fmt.Println("  configurations/  - host configurations will be stored here")
+		fmt.Println(ui.Success.Render("Initialized switchnix project:"))
+		fmt.Println("  hosts.yml        - " + ui.Faint.Render("define your remote NixOS hosts here"))
+		fmt.Println("  configurations/  - " + ui.Faint.Render("host configurations will be stored here"))
 		fmt.Println()
-		fmt.Println("Next steps:")
+		fmt.Println(ui.Bold.Render("Next steps:"))
 		fmt.Println("  1. Add your hosts to hosts.yml")
 		fmt.Println("  2. Run 'switchnix pull <host>' to fetch existing configurations")
 		return nil

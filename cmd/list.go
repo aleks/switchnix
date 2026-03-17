@@ -4,6 +4,9 @@ import (
 	"fmt"
 
 	"github.com/aleks/switchnix/internal/config"
+	"github.com/aleks/switchnix/internal/ui"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/table"
 	"github.com/spf13/cobra"
 )
 
@@ -25,13 +28,25 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(cfg.Hosts) == 0 {
-		fmt.Println("No hosts configured. Edit hosts.yml to add hosts.")
+		fmt.Println(ui.Warn.Render("No hosts configured. Edit hosts.yml to add hosts."))
 		return nil
 	}
 
-	fmt.Printf("%-20s %-30s %-15s %s\n", "NAME", "HOSTNAME", "USERNAME", "PORT")
-	for _, h := range cfg.Hosts {
-		fmt.Printf("%-20s %-30s %-15s %d\n", h.Name, h.Hostname, h.Username, h.Port)
+	rows := make([][]string, len(cfg.Hosts))
+	for i, h := range cfg.Hosts {
+		rows[i] = []string{h.Name, h.Hostname, h.Username, fmt.Sprintf("%d", h.Port)}
 	}
+
+	t := table.New().
+		Headers("NAME", "HOSTNAME", "USERNAME", "PORT").
+		Rows(rows...).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			if row == table.HeaderRow {
+				return ui.Bold
+			}
+			return lipgloss.NewStyle()
+		})
+
+	fmt.Println(t)
 	return nil
 }

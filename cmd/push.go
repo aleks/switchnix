@@ -13,6 +13,7 @@ import (
 	"github.com/aleks/switchnix/internal/config"
 	"github.com/aleks/switchnix/internal/diff"
 	"github.com/aleks/switchnix/internal/ssh"
+	"github.com/aleks/switchnix/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -49,7 +50,7 @@ func pushToStaging(ctx context.Context, host *config.Host, isDryRun bool) (apply
 	}
 
 	// Read remote files (uses interactive sudo for staging)
-	fmt.Printf("Fetching remote configuration from %s (%s)...\n", host.Name, host.Hostname)
+	fmt.Println(ui.Info.Render(fmt.Sprintf("Fetching remote configuration from %s (%s)...", host.Name, host.Hostname)))
 
 	fetchCtx, fetchCancel := withTimeout(ctx, 5*time.Minute)
 	defer fetchCancel()
@@ -62,19 +63,19 @@ func pushToStaging(ctx context.Context, host *config.Host, isDryRun bool) (apply
 	// Compute and display changes
 	cs := diff.ComputeChangeSet(localFiles, remoteFiles)
 	if !cs.HasChanges() {
-		fmt.Println("No changes to push.")
+		fmt.Println(ui.Info.Render("No changes to push."))
 		return nil, nil
 	}
 
 	diff.PrintChangeSet(cs, localFiles, remoteFiles)
 
 	if isDryRun {
-		fmt.Println("Dry run — no changes pushed.")
+		fmt.Println(ui.Faint.Render("Dry run — no changes pushed."))
 		return nil, nil
 	}
 
 	// Confirm
-	fmt.Printf("Apply these changes to %s (%s)? [y/N]: ", host.Name, host.Hostname)
+	fmt.Printf("Apply these changes to %s (%s)? %s ", host.Name, host.Hostname, ui.Faint.Render("[y/N]:"))
 	reader := bufio.NewReader(os.Stdin)
 	answer, err := reader.ReadString('\n')
 	if err != nil {
@@ -82,7 +83,7 @@ func pushToStaging(ctx context.Context, host *config.Host, isDryRun bool) (apply
 	}
 	answer = strings.TrimSpace(strings.ToLower(answer))
 	if answer != "y" && answer != "yes" {
-		fmt.Println("Cancelled.")
+		fmt.Println(ui.Warn.Render("Cancelled."))
 		return nil, nil
 	}
 
@@ -131,7 +132,7 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to apply configuration: %w", err)
 	}
 
-	fmt.Printf("Configuration pushed to %s successfully.\n", host.Name)
+	fmt.Println(ui.Success.Render(fmt.Sprintf("Configuration pushed to %s successfully.", host.Name)))
 	return nil
 }
 

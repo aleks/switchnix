@@ -5,6 +5,7 @@ import (
 
 	"github.com/aleks/switchnix/internal/config"
 	"github.com/aleks/switchnix/internal/ssh"
+	"github.com/aleks/switchnix/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -60,13 +61,15 @@ func runSwitch(cmd *cobra.Command, args []string) error {
 	if switchNoPush {
 		// --no-push: just run rebuild against /etc/nixos/ (original behavior)
 		rebuildCmd := fmt.Sprintf("sudo nixos-rebuild %s", switchAction)
-		fmt.Printf("Running '%s' on %s (%s)...\n\n", rebuildCmd, host.Name, host.Hostname)
+		fmt.Println(ui.Info.Render(fmt.Sprintf("Running '%s' on %s (%s)...", rebuildCmd, host.Name, host.Hostname)))
+		fmt.Println()
 
 		if err := ssh.RunSSHInteractive(cmdCtx, host, rebuildCmd); err != nil {
 			return fmt.Errorf("nixos-rebuild %s failed: %w", switchAction, err)
 		}
 
-		fmt.Printf("\nnixos-rebuild %s completed successfully on %s.\n", switchAction, host.Name)
+		fmt.Println()
+		fmt.Println(ui.Success.Render(fmt.Sprintf("nixos-rebuild %s completed successfully on %s.", switchAction, host.Name)))
 		return nil
 	}
 
@@ -86,7 +89,9 @@ func runSwitch(cmd *cobra.Command, args []string) error {
 
 	// Build from staging
 	rebuildCmd := fmt.Sprintf("sudo nixos-rebuild %s -I nixos-config=%s/configuration.nix", switchAction, stagingDir)
-	fmt.Printf("\nRunning '%s' on %s (%s)...\n\n", rebuildCmd, host.Name, host.Hostname)
+	fmt.Println()
+	fmt.Println(ui.Info.Render(fmt.Sprintf("Running '%s' on %s (%s)...", rebuildCmd, host.Name, host.Hostname)))
+	fmt.Println()
 
 	if err := ssh.RunSSHInteractive(cmdCtx, host, rebuildCmd); err != nil {
 		return fmt.Errorf("nixos-rebuild %s failed (remote config unchanged): %w", switchAction, err)
@@ -97,6 +102,7 @@ func runSwitch(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("rebuild succeeded but failed to commit config: %w", err)
 	}
 
-	fmt.Printf("\nnixos-rebuild %s completed successfully on %s.\n", switchAction, host.Name)
+	fmt.Println()
+	fmt.Println(ui.Success.Render(fmt.Sprintf("nixos-rebuild %s completed successfully on %s.", switchAction, host.Name)))
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 
 	"github.com/aleks/switchnix/internal/config"
 	"github.com/aleks/switchnix/internal/ssh"
+	"github.com/aleks/switchnix/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -44,7 +45,7 @@ func runPull(cmd *cobra.Command, args []string) error {
 	// Ensure local path ends with / for rsync
 	localPath := localDir + string(os.PathSeparator)
 
-	fmt.Printf("Pulling configuration from %s (%s)...\n", host.Name, host.Hostname)
+	fmt.Println(ui.Info.Render(fmt.Sprintf("Pulling configuration from %s (%s)...", host.Name, host.Hostname)))
 
 	ctx, cancel := withTimeout(cmdCtx, 10*time.Minute)
 	defer cancel()
@@ -62,6 +63,6 @@ func runPull(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("rsync failed: %w", err)
 	}
 
-	fmt.Printf("Configuration pulled to %s\n", localDir)
+	fmt.Println(ui.Success.Render(fmt.Sprintf("Configuration pulled to %s", localDir)))
 	return nil
 }

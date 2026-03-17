@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/fatih/color"
+	"github.com/aleks/switchnix/internal/ui"
 	"github.com/pmezard/go-difflib/difflib"
 )
 
@@ -73,24 +73,19 @@ func FormatDiff(diffText string) string {
 		return ""
 	}
 
-	red := color.New(color.FgRed).SprintFunc()
-	green := color.New(color.FgGreen).SprintFunc()
-	cyan := color.New(color.FgCyan).SprintFunc()
-	bold := color.New(color.Bold).SprintFunc()
-
 	var out strings.Builder
 	for _, line := range strings.Split(diffText, "\n") {
 		switch {
 		case strings.HasPrefix(line, "---"):
-			out.WriteString(bold(line))
+			out.WriteString(ui.Bold.Render(line))
 		case strings.HasPrefix(line, "+++"):
-			out.WriteString(bold(line))
+			out.WriteString(ui.Bold.Render(line))
 		case strings.HasPrefix(line, "@@"):
-			out.WriteString(cyan(line))
+			out.WriteString(ui.Cyan.Render(line))
 		case strings.HasPrefix(line, "-"):
-			out.WriteString(red(line))
+			out.WriteString(ui.Red.Render(line))
 		case strings.HasPrefix(line, "+"):
-			out.WriteString(green(line))
+			out.WriteString(ui.Green.Render(line))
 		default:
 			out.WriteString(line)
 		}
@@ -106,12 +101,8 @@ func PrintChangeSet(cs ChangeSet, local, remote map[string]string) {
 		return
 	}
 
-	green := color.New(color.FgGreen)
-	red := color.New(color.FgRed)
-	yellow := color.New(color.FgYellow)
-
 	if len(cs.Added) > 0 {
-		green.Println("Files to be added to remote:")
+		fmt.Println(ui.Green.Render("Files to be added to remote:"))
 		for _, f := range cs.Added {
 			fmt.Printf("  + %s\n", f)
 		}
@@ -119,7 +110,7 @@ func PrintChangeSet(cs ChangeSet, local, remote map[string]string) {
 	}
 
 	if len(cs.Removed) > 0 {
-		red.Println("Files to be removed from remote:")
+		fmt.Println(ui.Red.Render("Files to be removed from remote:"))
 		for _, f := range cs.Removed {
 			fmt.Printf("  - %s\n", f)
 		}
@@ -127,7 +118,7 @@ func PrintChangeSet(cs ChangeSet, local, remote map[string]string) {
 	}
 
 	if len(cs.Modified) > 0 {
-		yellow.Println("Files to be modified on remote:")
+		fmt.Println(ui.Yellow.Render("Files to be modified on remote:"))
 		for _, f := range cs.Modified {
 			fmt.Printf("  ~ %s\n", f)
 		}
