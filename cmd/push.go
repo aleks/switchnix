@@ -18,7 +18,7 @@ import (
 
 const maxFileSize = 10 * 1024 * 1024 // 10 MB
 
-var dryRun bool
+var pushDryRun bool
 
 var pushCmd = &cobra.Command{
 	Use:   "push <host>",
@@ -29,8 +29,81 @@ var pushCmd = &cobra.Command{
 }
 
 func init() {
-	pushCmd.Flags().BoolVar(&dryRun, "dry-run", false, "show diff without pushing changes")
+	pushCmd.Flags().BoolVar(&pushDryRun, "dry-run", false, "show diff without pushing changes")
 	rootCmd.AddCommand(pushCmd)
+}
+
+// pushToStaging handles diff display, confirmation, and rsync to staging.
+// Returns an apply function that commits staged files to /etc/nixos/ and cleans up.
+// If dryRun is true, shows the diff and returns without staging.
+func pushToStaging(ctx context.Context, host *config.Host, isDryRun bool) (apply func() error, err error) {
+	localDir := filepath.Join("configurations", host.Name)
+	if _, err := os.Stat(localDir); os.IsNotExist(err) {
+		return nil, fmt.Errorf("no local configuration found at %s. Run 'switchnix pull %s' first", localDir, host.Name)
+	}
+
+	// Read local files
+	localFiles, err := readLocalFiles(localDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read local files: %w", err)
+	}
+
+	// Read remote files (uses interactive sudo for staging)
+	fmt.Printf("Fetching remote configuration from %s (%s)...\n", host.Name, host.Hostname)
+
+	fetchCtx, fetchCancel := withTimeout(ctx, 5*time.Minute)
+	defer fetchCancel()
+
+	remoteFiles, err := readRemoteFiles(fetchCtx, host)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read remote files: %w", err)
+	}
+
+	// Compute and display changes
+	cs := diff.ComputeChangeSet(localFiles, remoteFiles)
+	if !cs.HasChanges() {
+		fmt.Println("No changes to push.")
+		return nil, nil
+	}
+
+	diff.PrintChangeSet(cs, localFiles, remoteFiles)
+
+	if isDryRun {
+		fmt.Println("Dry run — no changes pushed.")
+		return nil, nil
+	}
+
+	// Confirm
+	fmt.Printf("Apply these changes to %s (%s)? [y/N]: ", host.Name, host.Hostname)
+	reader := bufio.NewReader(os.Stdin)
+	answer, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, fmt.Errorf("failed to read input: %w", err)
+	}
+	answer = strings.TrimSpace(strings.ToLower(answer))
+	if answer != "y" && answer != "yes" {
+		fmt.Println("Cancelled.")
+		return nil, nil
+	}
+
+	// Stage push uses the parent context so the apply closure remains valid
+	// after this function returns.
+	remotePath, applyFn, err := ssh.StagePush(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare remote staging: %w", err)
+	}
+
+	// Rsync gets a timeout
+	pushCtx, pushCancel := withTimeout(ctx, 10*time.Minute)
+	defer pushCancel()
+
+	localPath := localDir + string(os.PathSeparator)
+	rsyncArgs := ssh.RsyncPushArgs(host, localPath, remotePath)
+	if err := ssh.Rsync(pushCtx, rsyncArgs); err != nil {
+		return nil, fmt.Errorf("rsync push failed: %w", err)
+	}
+
+	return applyFn, nil
 }
 
 func runPush(cmd *cobra.Command, args []string) error {
@@ -46,68 +119,12 @@ func runPush(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	localDir := filepath.Join("configurations", host.Name)
-	if _, err := os.Stat(localDir); os.IsNotExist(err) {
-		return fmt.Errorf("no local configuration found at %s. Run 'switchnix pull %s' first", localDir, host.Name)
-	}
-
-	// Read local files
-	localFiles, err := readLocalFiles(localDir)
+	apply, err := pushToStaging(cmdCtx, host, pushDryRun)
 	if err != nil {
-		return fmt.Errorf("failed to read local files: %w", err)
+		return err
 	}
-
-	// Read remote files (uses interactive sudo for staging)
-	fmt.Printf("Fetching remote configuration from %s (%s)...\n", host.Name, host.Hostname)
-
-	ctx, cancel := withTimeout(cmdCtx, 5*time.Minute)
-	defer cancel()
-
-	remoteFiles, err := readRemoteFiles(ctx, host)
-	if err != nil {
-		return fmt.Errorf("failed to read remote files: %w", err)
-	}
-
-	// Compute and display changes
-	cs := diff.ComputeChangeSet(localFiles, remoteFiles)
-	if !cs.HasChanges() {
-		fmt.Println("No changes to push.")
-		return nil
-	}
-
-	diff.PrintChangeSet(cs, localFiles, remoteFiles)
-
-	if dryRun {
-		fmt.Println("Dry run — no changes pushed.")
-		return nil
-	}
-
-	// Confirm
-	fmt.Printf("Apply these changes to %s (%s)? [y/N]: ", host.Name, host.Hostname)
-	reader := bufio.NewReader(os.Stdin)
-	answer, err := reader.ReadString('\n')
-	if err != nil {
-		return fmt.Errorf("failed to read input: %w", err)
-	}
-	answer = strings.TrimSpace(strings.ToLower(answer))
-	if answer != "y" && answer != "yes" {
-		fmt.Println("Push cancelled.")
-		return nil
-	}
-
-	// Push via rsync to staging dir, then apply with sudo
-	pushCtx, pushCancel := withTimeout(cmdCtx, 10*time.Minute)
-	defer pushCancel()
-
-	remotePath, apply, err := ssh.StagePush(pushCtx, host)
-	if err != nil {
-		return fmt.Errorf("failed to prepare remote staging: %w", err)
-	}
-
-	localPath := localDir + string(os.PathSeparator)
-	rsyncArgs := ssh.RsyncPushArgs(host, localPath, remotePath)
-	if err := ssh.Rsync(pushCtx, rsyncArgs); err != nil {
-		return fmt.Errorf("rsync push failed: %w", err)
+	if apply == nil {
+		return nil // no changes or dry run
 	}
 
 	if err := apply(); err != nil {

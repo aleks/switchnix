@@ -64,12 +64,9 @@ switchnix pull myhost
 vim configurations/myhost/configuration.nix
 
 # Preview what would change
-switchnix push myhost --dry-run
+switchnix switch myhost --dry-run
 
-# Push changes (with diff and confirmation prompt)
-switchnix push myhost
-
-# Apply the configuration on the remote host
+# Push and apply atomically (with diff and confirmation prompt)
 switchnix switch myhost
 ```
 
@@ -89,11 +86,13 @@ Pulls `/etc/nixos/` from the remote host into `configurations/<host>/` locally. 
 
 ### `switchnix push <host> [--dry-run]`
 
-Compares local files against the remote `/etc/nixos/`, displays a colored unified diff, and asks for confirmation before pushing. Use `--dry-run` to preview without applying.
+Compares local files against the remote `/etc/nixos/`, displays a colored unified diff, and asks for confirmation before pushing. Use `--dry-run` to preview without applying. Does **not** run `nixos-rebuild` — use `switch` for that.
 
-### `switchnix switch <host> [--action switch|test|boot]`
+### `switchnix switch <host> [--action switch|test|boot] [--no-push] [--dry-run]`
 
-Runs `sudo nixos-rebuild <action>` on the remote host with full terminal passthrough. Defaults to `switch`. Use `test` to activate without setting the boot default, or `boot` to set the boot default without activating.
+Atomically pushes local configuration and runs `nixos-rebuild` on the remote host. Files are staged in a temporary directory and `nixos-rebuild` runs against the staged config. Only if the rebuild succeeds are files committed to `/etc/nixos/`. If the rebuild fails, `/etc/nixos/` is left untouched.
+
+Use `--no-push` to skip pushing and rebuild from the existing remote `/etc/nixos/`. Use `--dry-run` to preview the diff without pushing or switching.
 
 ## Configuration
 

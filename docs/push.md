@@ -1,6 +1,8 @@
 # switchnix push
 
-Push local NixOS configuration to a remote host, with diff preview and confirmation.
+Push local NixOS configuration to a remote host, with diff preview and confirmation. Does **not** run `nixos-rebuild` — use [`switchnix switch`](switch.md) to push and apply atomically.
+
+> **Tip:** In most cases you want `switchnix switch`, which pushes to a staging directory, rebuilds against it, and only commits to `/etc/nixos/` on success. Use `push` when you want to update the remote files without triggering a rebuild.
 
 ## Usage
 
@@ -20,7 +22,9 @@ Where `<host>` is the name of a host defined in `hosts.yml`.
    - Files to be **removed** (exist remotely but not locally)
    - Files to be **modified** (content differs)
 4. Prompts for confirmation: `Apply these changes? [y/N]` (default is No)
-5. On confirmation, pushes the local configuration to the remote using `rsync --delete`
+5. On confirmation, pushes the local configuration to the remote `/etc/nixos/` using `rsync --delete`
+
+Note that `push` writes directly to `/etc/nixos/` without verifying the configuration builds successfully. If you want safety against broken configs, use `switchnix switch` instead.
 
 ## Flags
 

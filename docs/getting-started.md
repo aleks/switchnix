@@ -43,10 +43,7 @@ switchnix pull webserver
 # 4. Edit the configuration locally
 vim configurations/webserver/configuration.nix
 
-# 5. Review and push changes
-switchnix push webserver
-
-# 6. Apply the new configuration
+# 5. Push and apply atomically
 switchnix switch webserver
 ```
 
