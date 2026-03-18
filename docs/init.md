@@ -35,6 +35,7 @@ hosts:
     username: root           # SSH username
     port: 22                 # SSH port (optional, default: 22)
     ssh_options: []          # Extra SSH flags (optional)
+    switch_args: ""          # Extra args for nixos-rebuild (optional)
 ```
 
 ### Field reference
@@ -46,6 +47,7 @@ hosts:
 | `username` | Yes | — | SSH username for connecting to the host. |
 | `port` | No | `22` | SSH port. |
 | `ssh_options` | No | `[]` | Additional flags passed to the `ssh` command (e.g., `["-o", "ConnectTimeout=5"]`). Validated against an allowlist to prevent injection. |
+| `switch_args` | No | `""` | Additional arguments passed to `nixos-rebuild` when running `switchnix switch` (e.g., `"--flake /etc/nixos#webserver"`). Validated to prevent shell injection. |
 
 ## Next steps
 

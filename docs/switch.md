@@ -45,6 +45,30 @@ This means a broken configuration will never overwrite your working `/etc/nixos/
 | `test` | Build and activate the configuration immediately, but do not make it the boot default |
 | `boot` | Build the configuration and make it the boot default, but do not activate until next reboot |
 
+## Per-host switch args
+
+You can specify default `nixos-rebuild` arguments per host in `hosts.yml` using the `switch_args` field:
+
+```yaml
+hosts:
+  - name: webserver
+    hostname: 192.168.1.10
+    username: root
+    switch_args: "--flake /etc/nixos#webserver"
+```
+
+These are automatically prepended to any `--nixos-args` flags passed on the command line. This means CLI flags can extend or override the per-host defaults:
+
+```bash
+# Uses only the host's switch_args (--flake /etc/nixos#webserver)
+switchnix switch webserver
+
+# Appends --show-trace after the host's switch_args
+switchnix switch webserver --nixos-args=--show-trace
+```
+
+The `switch_args` value is validated to prevent shell injection — only flags, flag=value pairs, and safe path values are allowed.
+
 ## How it works
 
 The default flow (without `--no-push`) combines `push` and `switch` into a single atomic operation. The configuration is first rsynced to a staging directory, and `nixos-rebuild` runs against that staging directory. Only after a successful rebuild are the files committed to `/etc/nixos/`. If the rebuild fails, the staging directory is cleaned up and `/etc/nixos/` remains unchanged.

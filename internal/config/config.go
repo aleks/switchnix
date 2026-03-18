@@ -16,6 +16,7 @@ type Host struct {
 	Username   string   `yaml:"username"`
 	Port       int      `yaml:"port,omitempty"`
 	SSHOptions []string `yaml:"ssh_options,omitempty"`
+	SwitchArgs string   `yaml:"switch_args,omitempty"`
 }
 
 type Config struct {
@@ -28,6 +29,9 @@ var (
 	usernameRegexp = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]*$`)
 	// sshOptionRegexp allows only flags starting with - and safe values.
 	sshOptionRegexp = regexp.MustCompile(`^-[a-zA-Z0-9]$|^[a-zA-Z0-9][a-zA-Z0-9._=:/-]*$`)
+	// switchArgRegexp allows flags and values safe for shell interpolation.
+	// Each whitespace-separated token must be a flag (--foo, -f, --foo=val) or a safe value.
+	switchArgRegexp = regexp.MustCompile(`^--?[a-zA-Z0-9][a-zA-Z0-9_-]*(=[a-zA-Z0-9._:/#-]+)?$|^[a-zA-Z0-9/][a-zA-Z0-9._=:/#-]*$`)
 )
 
 func isValidName(s string) bool {
@@ -50,6 +54,18 @@ func isValidUsername(s string) bool {
 
 func isValidSSHOption(s string) bool {
 	return sshOptionRegexp.MatchString(s)
+}
+
+func isValidSwitchArgs(s string) bool {
+	if s == "" {
+		return true
+	}
+	for _, token := range strings.Fields(s) {
+		if !switchArgRegexp.MatchString(token) {
+			return false
+		}
+	}
+	return true
 }
 
 func LoadConfig(path string) (*Config, error) {
@@ -102,6 +118,9 @@ func validateHost(h *Host) error {
 		if !isValidSSHOption(opt) {
 			return fmt.Errorf("invalid ssh_option %q: contains disallowed characters", opt)
 		}
+	}
+	if !isValidSwitchArgs(h.SwitchArgs) {
+		return fmt.Errorf("invalid switch_args %q: contains disallowed characters", h.SwitchArgs)
 	}
 	return nil
 }

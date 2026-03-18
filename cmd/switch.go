@@ -62,8 +62,11 @@ func runSwitch(cmd *cobra.Command, args []string) error {
 	}
 
 	extraArgs := ""
+	if host.SwitchArgs != "" {
+		extraArgs = " " + host.SwitchArgs
+	}
 	if len(switchNixosArgs) > 0 {
-		extraArgs = " " + strings.Join(switchNixosArgs, " ")
+		extraArgs += " " + strings.Join(switchNixosArgs, " ")
 	}
 
 	if switchNoPush {

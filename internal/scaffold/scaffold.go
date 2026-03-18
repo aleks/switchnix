@@ -15,6 +15,7 @@ const hostsTemplate = `# switchnix hosts configuration
 #     username: root           # SSH username
 #     port: 22                 # SSH port (optional, default: 22)
 #     ssh_options: []          # Extra SSH flags (optional)
+#     switch_args: ""          # Extra args for nixos-rebuild (optional)
 
 hosts: []
 `

@@ -202,6 +202,14 @@ func TestLoadConfig_ValidationErrors(t *testing.T) {
     username: root
     ssh_options: ["; rm -rf /"]`,
 		},
+		{
+			name: "unsafe switch_args",
+			content: `hosts:
+  - name: server
+    hostname: 10.0.0.1
+    username: root
+    switch_args: "$(whoami)"`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -303,6 +311,55 @@ func TestValidHostname(t *testing.T) {
 	for _, h := range invalid {
 		if isValidHostname(h) {
 			t.Errorf("expected %q to be invalid hostname", h)
+		}
+	}
+}
+
+func TestLoadConfig_SwitchArgs(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "hosts.yml")
+	content := []byte(`hosts:
+  - name: server
+    hostname: 10.0.0.1
+    username: root
+    switch_args: "--flake /etc/nixos#myhost"
+`)
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Hosts[0].SwitchArgs != "--flake /etc/nixos#myhost" {
+		t.Errorf("expected switch_args '--flake /etc/nixos#myhost', got %q", cfg.Hosts[0].SwitchArgs)
+	}
+}
+
+func TestValidSwitchArgs(t *testing.T) {
+	valid := []string{
+		"",
+		"--flake /etc/nixos#myhost",
+		"--option substitute true",
+		"--impure",
+		"--show-trace",
+	}
+	for _, args := range valid {
+		if !isValidSwitchArgs(args) {
+			t.Errorf("expected %q to be valid switch_args", args)
+		}
+	}
+
+	invalid := []string{
+		"$(whoami)",
+		"; rm -rf /",
+		"--flake $(evil)",
+		"--flag `cmd`",
+	}
+	for _, args := range invalid {
+		if isValidSwitchArgs(args) {
+			t.Errorf("expected %q to be invalid switch_args", args)
 		}
 	}
 }

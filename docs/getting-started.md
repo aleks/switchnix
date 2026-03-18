@@ -35,6 +35,7 @@ hosts:
   - name: webserver
     hostname: 192.168.1.10
     username: root
+    switch_args: "--flake /etc/nixos#webserver"
 EOF
 
 # 3. Pull the current configuration from the server
@@ -79,7 +80,7 @@ switchnix is designed to avoid introducing security risks:
 - **No credential storage**: Relies entirely on SSH agent/key-based authentication
 - **No password capture**: Sudo prompts pass through directly via PTY
 - **Host key verification**: Delegated to system SSH (`known_hosts`)
-- **Input validation**: All user-provided values (hostnames, usernames, names, SSH options) are validated against strict allowlists
+- **Input validation**: All user-provided values (hostnames, usernames, names, SSH options, switch args) are validated against strict allowlists
 - **Path safety**: Remote file paths are validated to prevent command injection
 - **BatchMode**: Non-interactive SSH commands use `BatchMode=yes` to prevent password fallback
 - **File size limits**: Local files > 10 MB are rejected during push
